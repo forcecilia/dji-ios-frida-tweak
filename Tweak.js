@@ -2,14 +2,14 @@ if (ObjC.available) {
   console.log('[*] Tweak launched');
 
   var config = {
-    version: 0.2,
+    version: 0.21,
     debug: false,
     force_fcc: false,
     force_boost: false,
     force_2_3_G: false,
     force_2_5_G: false,
     illegal_channels: false,
-    country_code_us: false,
+    country_code_us: true,
     disable_fw_upgrade: true,
     disable_nfz_upgrade: true
   };
@@ -68,16 +68,25 @@ if (ObjC.available) {
     }
   }
 
-  function modify_implementation(class_name, method_name, callback) {
+   function modify_implementation(class_name, method_name, functions) {
     try {
-      var classObj = ObjC.classes[class_name];
-      var methodObj = classObj[method_name]
+      var methodObj = ObjC.classes[class_name][method_name]
       var old_implementation = methodObj.implementation;
 
-      methodObj.implementation = ObjC.implement(methodObj, function (handle, selector) {
-        var original_value = old_implementation(handle, selector);
+      methodObj.implementation = ObjC.implement(methodObj, function () {
+        var args = [].slice.call(arguments); // modifying Arguments object into array
+        
+        if(typeof functions['arguments'] === 'function') {
+          functions['arguments'](args);
+        }
 
-        return callback(original_value);
+        var result = old_implementation.apply(null, args);
+        
+        if(typeof functions['result'] === 'function') {
+          result = functions['result'](result);
+        }
+
+        return result;
       });
     } catch (err) {
       console.log('[!] Error while hooking ' + class_name + ' [' + method_name + ']', err);
@@ -85,29 +94,41 @@ if (ObjC.available) {
   }
 
   function modify_value(class_name, method_name, new_value, toggle) {
-    console.log('[*] Hooking for modify ' + class_name + '[' + method_name + ']');
+    console.log('[*] Hooking for modify value ' + class_name + '[' + method_name + ']');
 
-    modify_implementation(class_name, method_name, function(original_value) {
-      if(!toggle || (typeof toggle === 'function' && toggle())) {
-        if(typeof new_value === 'string') {
-          new_value = ptr(ObjC.classes.NSString.stringWithString_(new_value));
-        }
+    modify_implementation(class_name, method_name, {
+      result: function(original_value) {
+        if(!toggle || (typeof toggle === 'function' && toggle())) {
+          if(original_value != new_value) {
+            console.log('[*] Modified ' + class_name + '[' + method_name + '] value from ' + original_value + ' to ' + new_value);
 
-        if(original_value != new_value) {
-          console.log('[*] Modified ' + class_name + '[' + method_name + '] value from ' + original_value + ' to ' + new_value);
-
-          if(config.debug) {
-            alert(class_name, 'Modified value [' + method_name + '] from ' + original_value + ' to ' + new_value, [
-              {
-                title: 'Ok'
-              }
-            ]);
+            if(config.debug) {
+              alert(class_name, 'Modified value [' + method_name + '] from ' + original_value + ' to ' + new_value, [
+                {
+                  title: 'Ok'
+                }
+              ]);
+            }
           }
+
+          return new_value;
+        } else {
+          return original_value;
+        }
+      }
+    });
+  }
+
+  function modify_arguments(class_name, method_name, args_func, toggle) {
+    console.log('[*] Hooking for modify arguments ' + class_name + '[' + method_name + ']');
+
+    modify_implementation(class_name, method_name, {
+      arguments: function(args) {
+        if(!toggle || (typeof toggle === 'function' && toggle())) {
+          args = args_func(args);
         }
 
-        return new_value;
-      } else {
-        return original_value;
+        return args;
       }
     });
   }
@@ -115,22 +136,24 @@ if (ObjC.available) {
   function check(class_name, method_name, callback) {
     console.log('[*] Hooking for check ' + class_name + '[' + method_name + ']');
 
-    modify_implementation(class_name, method_name, function(original_value) {
-      console.log('[*] Value ' + class_name + '[' + method_name + '] - ' + original_value);
-      
-      if(config.debug) {
-        alert(class_name, 'Value [' + method_name + '] - ' + original_value, [
-          {
-            title: 'Ok'
-          }
-        ]);
-      }
+    modify_implementation(class_name, method_name, {
+      result: function(original_value) {
+        console.log('[*] Value ' + class_name + '[' + method_name + '] - ' + original_value);
+        
+        if(config.debug) {
+          alert(class_name, 'Value [' + method_name + '] - ' + original_value, [
+            {
+              title: 'Ok'
+            }
+          ]);
+        }
 
-      if(typeof callback == 'function') {
-        callback(original_value);
-      }
+        if(typeof callback == 'function') {
+          callback(original_value);
+        }
 
-      return original_value;
+        return original_value;
+      }
     });
   }
 
@@ -174,20 +197,6 @@ if (ObjC.available) {
             },
             {
               title: 'CE in EU, FCC in US (default)'
-            }
-          ]);
-
-          alert('Change Country Code to US?', 'Enable FCC and 5.8G', [
-            {
-              title: 'Yes',
-              preferred: true,
-              callback: function() {
-                console.log('[*] Changed country code to US');
-                config.country_code_us = true;
-              }
-            },
-            {
-              title: 'No (default)'
             }
           ]);
 
@@ -251,14 +260,13 @@ if (ObjC.available) {
   modify_value('DJIAppForceUpdateManager', '- hasChecked', 1, function(){ return config.disable_fw_upgrade; });
   modify_value('DJIUpgradeNotifyViewModel', '- notifyHidden', 1, function(){ return config.disable_fw_upgrade; });
 
-  /* Disable NFZ update check */
-  modify_value('DJILImitDBUpdateLogic', '- needUpdateType', 0, function(){ return config.disable_nfz_upgrade; });
+  /* Change country code to US */
+  modify_arguments('DJICountryCodeProviderLogic', '- setCountryCode:withSource:', function(args){
+      args[2] = ptr(ObjC.classes.NSString.stringWithString_('US'));
+  }, function(){ return config.country_code_us; });
 
   /* Force FCC */
   modify_value('DJIAppSettings', '- sdr_force_fcc', 1, function(){ return config.force_fcc; });
-
-  /* Change country code to US */
-  modify_value('DJICountryCodeManager', '- currentCountryCode', 'US', function(){ return config.country_code_us; });
 
   /* Force BOOST */
   modify_value('DJIAppSettings', '- sdr_force_boost', 1, function(){ return config.force_boost; });
@@ -272,9 +280,6 @@ if (ObjC.available) {
   /* Enable 32ch */
   modify_value('DJIAppSettings', '- canUseIllegalChannels', 1, function(){ return config.illegal_channels; });
   modify_value('DJIRadioLogic', '- canUseIllegalChannels', 1, function(){ return config.illegal_channels; });
-  
-  /* Flight Records admin */
-  modify_value('DJIAccountManager', '- checkIsAdminUser', 1);
 
   /* Hide terms */
   modify_value('DJITermsNotificationController', '- shouldShowTerms', 0);
