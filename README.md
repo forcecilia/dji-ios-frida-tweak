@@ -7,6 +7,9 @@
 
 > Tested on DJI Mavic Pro and DJI Inspire 2
 
+## Installation How-To
+See: [How to install the Patched DJI GO4 App on iPad or iPhone](http://dji.retroroms.info/howto/apple_ios_patched_dji_go4)
+
 ## Disable menu:
 **Set needed options to true**
 ```javascript
@@ -40,7 +43,7 @@ to:
 
 ## Contacts
 * Email: ddzobov@gmail.com
-* Slack: [http://dji-rev.slack.com/#ios_ipa_reversing](#ios_ipa_reversing)
+* Slack: [DJI Reverse Engineering #ios_ipa_reversing](http://dji-rev.slack.com/#ios_ipa_reversing)
 
 ## Donations are welcome:
 * Paypal: ddzobov@gmail.com
